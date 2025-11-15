@@ -1,0 +1,10 @@
+praw==7.6.0
+pandas
+numpy
+scikit-learn
+nltk
+vaderSentiment
+jinja2
+python-dotenv
+weasyprint
+streamlit

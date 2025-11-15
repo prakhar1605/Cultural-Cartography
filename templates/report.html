@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"/><title>{{ brand }} Report</title></head>
+<body>
+<h1>{{ brand }} — Cultural Analysis</h1>
+<p>Sample size: {{ sample_size }}</p>
+<h2>Top Subreddits</h2>
+<table border=1>{% for r in top_subreddits %}<tr><td>{{r.subreddit}}</td><td>{{r.count}}</td><td>{{'%0.2f'|format(r.freq_percent)}}</td></tr>{% endfor %}</table>
+<h2>Most Unique</h2>
+<table border=1>{% for r in top_unique %}<tr><td>{{r.subreddit}}</td><td>{{'%0.2f'|format(r.freq_percent)}}</td><td>{{'%0.2f'|format(r.uniqueness)}}</td></tr>{% endfor %}</table>
+</body></html>
