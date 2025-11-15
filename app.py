@@ -1,7 +1,7 @@
 # app.py
 # Streamlit app: Cultural Cartography (Reddit-based audience analysis)
 # Requirements:
-# pip install praw pandas streamlit vaderSentiment python-dotenv
+# pip install praw pandas streamlit vaderSentiment
 #
 # NOTE: This version uses Streamlit Secrets (st.secrets) to read API keys.
 # Put the following keys in Streamlit Secrets:
@@ -11,13 +11,13 @@
 # streamlit run app.py
 
 import os
-import time
 import json
 from collections import Counter
 from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Sentiment
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -65,7 +65,6 @@ def fetch_reddit_posts(query, max_posts=200, progress_callback=None):
     posts = []
     count = 0
     try:
-        # using .search on r/all - rate sensitive
         for submission in reddit.subreddit("all").search(query, limit=max_posts, sort="new"):
             posts.append({
                 "id": submission.id,
@@ -146,17 +145,13 @@ def ensure_baseline(baseline_file=BASELINE_FILE):
         except Exception:
             pass
 
-    # fetch small baseline sample from r/all hot posts
     reddit = get_reddit_client()
     ctr = Counter()
-    fetched = 0
     max_posts = 500
     try:
         for submission in reddit.subreddit("all").hot(limit=max_posts):
             ctr.update([str(submission.subreddit)])
-            fetched += 1
     except Exception:
-        # fallback: return empty baseline
         return pd.DataFrame(columns=["subreddit", "count", "freq_percent"])
 
     baseline_df = pd.DataFrame(ctr.most_common(), columns=["subreddit", "count"])
@@ -167,20 +162,47 @@ def ensure_baseline(baseline_file=BASELINE_FILE):
         pass
     return baseline_df
 
-# ---------- Report generation (clean HTML, no markdown '#') ----------
+# ---------- Report generation (CSS that resists theme overrides) ----------
 def generate_report_html(brand, top_subs_df, uniqueness_df, sentiment, sample_size):
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     title = f"{brand} — Cultural analysis of the audience"
     top_subs = top_subs_df.head(20).to_dict(orient="records")
     top_unique = uniqueness_df.head(20).to_dict(orient="records")
 
+    # CSS that forces readable colors (overrides Streamlit dark theme)
+    style = """
+    <style>
+      .cc-report { 
+        background: #ffffff !important; 
+        color: #111111 !important; 
+        padding: 20px; 
+        border-radius: 10px; 
+        font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial; 
+        box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+      }
+      .cc-report h1 { color: #0f172a !important; margin: 0 0 8px; font-size: 26px; }
+      .cc-report h2 { color: #0b1220 !important; margin-top:18px; font-size:18px; }
+      .cc-report p, .cc-report li, .cc-report td, .cc-report th { color: #111827 !important; }
+      .cc-muted { color: #6b7280 !important; font-size:13px; }
+      .cc-table { border-collapse: collapse; width: 100%; margin-top:12px; }
+      .cc-table th { text-align:left; padding:8px; border-bottom:1px solid #e6e9ee; color:#374151 !important; font-weight:600; background:transparent; }
+      .cc-table td { padding:8px; border-bottom:1px solid #f3f4f6; color:#111827 !important; }
+      .cc-badge { display:inline-block; padding:4px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:600; font-size:13px; }
+      .cc-report a { color: #0b69ff !important; }
+      @media (max-width:640px) {
+        .cc-report { padding:12px; }
+        .cc-report h1 { font-size:20px; }
+      }
+    </style>
+    """
+
     lines = []
-    lines.append(f"<h1 style='font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto;'> {title} </h1>")
-    lines.append(f"<p style='color:#555'><em>Report generated: {now} — sample size approx: {sample_size}</em></p>")
+    lines.append(f"<div class='cc-report'>")
+    lines.append(f"<h1>{title}</h1>")
+    lines.append(f"<p class='cc-muted'><em>Report generated: {now} — sample size approx: {sample_size}</em></p>")
 
     # Executive summary
     lines.append("<h2>Executive summary</h2>")
-    # a short digest sentence
     if len(top_subs) >= 3:
         lines.append("<p>The sampled audience frequently engages with communities such as <strong>{}</strong>, <strong>{}</strong>, and <strong>{}</strong>. These communities shape the feeds and conversations that this audience sees daily.</p>".format(
             top_subs[0]["subreddit"], top_subs[1]["subreddit"], top_subs[2]["subreddit"]
@@ -199,16 +221,16 @@ def generate_report_html(brand, top_subs_df, uniqueness_df, sentiment, sample_si
 
     # Top interests table
     lines.append("<h2>Top subreddits — frequency in sample</h2>")
-    lines.append("<table style='border-collapse:collapse;width:100%'><thead><tr style='text-align:left'><th style='padding:6px;border-bottom:1px solid #ddd'>Subreddit</th><th style='padding:6px;border-bottom:1px solid #ddd'>Count</th><th style='padding:6px;border-bottom:1px solid #ddd'>Freq %</th></tr></thead><tbody>")
+    lines.append("<table class='cc-table'><thead><tr><th>Subreddit</th><th>Count</th><th>Freq %</th></tr></thead><tbody>")
     for _, r in top_subs_df.head(25).iterrows():
-        lines.append(f"<tr><td style='padding:6px;border-bottom:1px solid #f1f1f1'>{r['subreddit']}</td><td style='padding:6px;border-bottom:1px solid #f1f1f1'>{int(r['count'])}</td><td style='padding:6px;border-bottom:1px solid #f1f1f1'>{r['freq_percent']:.2f}%</td></tr>")
+        lines.append(f"<tr><td>{r['subreddit']}</td><td>{int(r['count'])}</td><td>{r['freq_percent']:.2f}%</td></tr>")
     lines.append("</tbody></table>")
 
     # Uniqueness table
     lines.append("<h2>Most unique subreddits (vs baseline)</h2>")
-    lines.append("<table style='border-collapse:collapse;width:100%'><thead><tr style='text-align:left'><th style='padding:6px;border-bottom:1px solid #ddd'>Subreddit</th><th style='padding:6px;border-bottom:1px solid #ddd'>Freq %</th><th style='padding:6px;border-bottom:1px solid #ddd'>Uniqueness</th></tr></thead><tbody>")
+    lines.append("<table class='cc-table'><thead><tr><th>Subreddit</th><th>Freq %</th><th>Uniqueness</th></tr></thead><tbody>")
     for _, r in uniqueness_df.head(25).iterrows():
-        lines.append(f"<tr><td style='padding:6px;border-bottom:1px solid #f1f1f1'>{r['subreddit']}</td><td style='padding:6px;border-bottom:1px solid #f1f1f1'>{r['freq_percent']:.2f}%</td><td style='padding:6px;border-bottom:1px solid #f1f1f1'>{r['uniqueness']:.2f}x</td></tr>")
+        lines.append(f"<tr><td>{r['subreddit']}</td><td>{r['freq_percent']:.2f}%</td><td>{r['uniqueness']:.2f}x</td></tr>")
     lines.append("</tbody></table>")
 
     # Sentiment summary
@@ -219,11 +241,10 @@ def generate_report_html(brand, top_subs_df, uniqueness_df, sentiment, sample_si
     lines.append(f"<li>Neutral: {sentiment.get('neutral_pct', 0)}%</li>")
     lines.append("</ul>")
 
-    lines.append("<p style='color:#666;font-size:13px'>Notes: Uniqueness = how much more likely the sample is to follow a subreddit compared to a baseline. Treat results as aggregated signals, not personal data.</p>")
+    lines.append("<p class='cc-muted'>Notes: Uniqueness = how much more likely the sample is to follow a subreddit compared to a baseline. Treat results as aggregated signals, not personal data.</p>")
+    lines.append("</div>")  # end container
 
-    html = "<div style='font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto; padding:14px; background:#fff; border-radius:8px;'>"
-    html += "".join(lines)
-    html += "</div>"
+    html = style + "\n" + "".join(lines)
 
     try:
         with open(REPORT_HTML, "w", encoding="utf-8") as f:
@@ -314,11 +335,23 @@ if run:
                 st.metric("Neutral %", f"{sentiment.get('neutral_pct', 0)}%")
                 st.write("Average compound score:", sentiment.get("average_compound", 0))
             with tab3:
-                st.markdown(html, unsafe_allow_html=True)
+                st.write("### Narrative Report")
+                # render in an isolated iframe to avoid Streamlit theme overrides
+                try:
+                    components.html(html, height=800, scrolling=True)
+                except Exception as e:
+                    st.markdown(html, unsafe_allow_html=True)
+                    st.error("Iframe render failed, falling back to markdown. Error: " + str(e))
+
+            # DEBUG: show preview of saved HTML (temporary - remove if not needed)
+            try:
+                st.expander("Saved report HTML preview (first 1500 chars)").write(open(REPORT_HTML, "r", encoding="utf-8").read(1500))
+            except Exception:
+                pass
 
         except Exception as e:
             st.error(f"Analysis failed: {e}")
-            # raise for local debug if you want (comment out on Cloud)
+            # re-raise for local debugging (comment out if you don't want stack trace on Cloud)
             raise
 
 # Footer: helpful notes
